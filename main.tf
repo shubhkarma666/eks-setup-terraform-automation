@@ -2,6 +2,8 @@ provider "aws" {
   region = "ap-south-1"
 }
 
+
+#VPC
 resource "aws_vpc" "shubham_vpc" {
   cidr_block = "10.0.0.0/16"
 
@@ -10,6 +12,8 @@ resource "aws_vpc" "shubham_vpc" {
   }
 }
 
+
+#SUBNET
 resource "aws_subnet" "shubham_subnet" {
   count = 2
   vpc_id                  = aws_vpc.shubham_vpc.id
@@ -22,6 +26,8 @@ resource "aws_subnet" "shubham_subnet" {
   }
 }
 
+
+#Internet gateway
 resource "aws_internet_gateway" "shubham_igw" {
   vpc_id = aws_vpc.shubham_vpc.id
 
@@ -30,6 +36,8 @@ resource "aws_internet_gateway" "shubham_igw" {
   }
 }
 
+
+#Route Table
 resource "aws_route_table" "shubham_route_table" {
   vpc_id = aws_vpc.shubham_vpc.id
 
@@ -43,12 +51,16 @@ resource "aws_route_table" "shubham_route_table" {
   }
 }
 
+
+#subnet associated with RT
 resource "aws_route_table_association" "a" {
   count          = 2
   subnet_id      = aws_subnet.shubham_subnet[count.index].id
   route_table_id = aws_route_table.shubham_route_table.id
 }
 
+
+#Security Group
 resource "aws_security_group" "shubham_cluster_sg" {
   vpc_id = aws_vpc.shubham_vpc.id
 
@@ -64,6 +76,8 @@ resource "aws_security_group" "shubham_cluster_sg" {
   }
 }
 
+
+#Node SG
 resource "aws_security_group" "shubham_node_sg" {
   vpc_id = aws_vpc.shubham_vpc.id
 
@@ -86,6 +100,8 @@ resource "aws_security_group" "shubham_node_sg" {
   }
 }
 
+
+#EKS Cluster
 resource "aws_eks_cluster" "shubham" {
   name     = "shubham-cluster"
   role_arn = aws_iam_role.shubham_cluster_role.arn
@@ -96,6 +112,8 @@ resource "aws_eks_cluster" "shubham" {
   }
 }
 
+
+#WorkerNode Setup
 resource "aws_eks_node_group" "shubham" {
   cluster_name    = aws_eks_cluster.shubham.name
   node_group_name = "shubham-node-group"
@@ -116,6 +134,8 @@ resource "aws_eks_node_group" "shubham" {
   }
 }
 
+
+#Iam ROLE
 resource "aws_iam_role" "shubham_cluster_role" {
   name = "shubham-cluster-role"
 
@@ -135,11 +155,14 @@ resource "aws_iam_role" "shubham_cluster_role" {
 EOF
 }
 
+#IAMROLE assign to Cluster
 resource "aws_iam_role_policy_attachment" "shubham_cluster_role_policy" {
   role       = aws_iam_role.shubham_cluster_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
+
+#IamRole assign to Nodes
 resource "aws_iam_role" "shubham_node_group_role" {
   name = "shubham-node-group-role"
 
@@ -158,6 +181,9 @@ resource "aws_iam_role" "shubham_node_group_role" {
 }
 EOF
 }
+
+
+#attaching Policy to all NODES
 
 resource "aws_iam_role_policy_attachment" "shubham_node_group_role_policy" {
   role       = aws_iam_role.shubham_node_group_role.name
