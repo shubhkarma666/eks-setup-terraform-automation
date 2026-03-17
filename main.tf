@@ -133,12 +133,12 @@ resource "aws_eks_node_group" "shubham" {
   subnet_ids = aws_subnet.shubham_subnet[*].id   # launch nodes in subnets
 
   scaling_config {
-    desired_size = 3   # number of nodes
+    desired_size = 2   # number of nodes
     max_size = 3
-    min_size = 3
+    min_size = 1
   }
 
-  instance_types = ["c7i-flex.large"]   # EC2 type
+  instance_types = ["t3.small"]   # EC2 type for WorkerNODE
 
   remote_access {
     ec2_ssh_key = var.ssh_key_name   # SSH key
