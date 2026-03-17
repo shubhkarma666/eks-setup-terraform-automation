@@ -1,11 +1,12 @@
+# AWS provider config (region = Mumbai)
 provider "aws" {
   region = "ap-south-1"
 }
 
 
-#VPC
+# Create VPC (main network)
 resource "aws_vpc" "shubham_vpc" {
-  cidr_block = "10.0.0.0/16"
+  cidr_block = "10.0.0.0/16"   # private IP range
 
   tags = {
     Name = "shubham-vpc"
@@ -13,13 +14,19 @@ resource "aws_vpc" "shubham_vpc" {
 }
 
 
-#SUBNET
+# Create 2 public subnets
 resource "aws_subnet" "shubham_subnet" {
-  count = 2
-  vpc_id                  = aws_vpc.shubham_vpc.id
-  cidr_block              = cidrsubnet(aws_vpc.shubham_vpc.cidr_block, 8, count.index)
-  availability_zone       = element(["ap-south-1a", "ap-south-1b"], count.index)
-  map_public_ip_on_launch = true
+  count = 2   # create 2 subnets
+
+  vpc_id = aws_vpc.shubham_vpc.id   # attach to VPC
+
+  cidr_block = cidrsubnet(aws_vpc.shubham_vpc.cidr_block, 8, count.index)  
+  # split VPC CIDR into smaller subnets
+
+  availability_zone = element(["ap-south-1a", "ap-south-1b"], count.index)  
+  # place subnet in AZ
+
+  map_public_ip_on_launch = true   # auto assign public IP
 
   tags = {
     Name = "shubham-subnet-${count.index}"
@@ -27,7 +34,7 @@ resource "aws_subnet" "shubham_subnet" {
 }
 
 
-#Internet gateway
+# Internet Gateway (for internet access)
 resource "aws_internet_gateway" "shubham_igw" {
   vpc_id = aws_vpc.shubham_vpc.id
 
@@ -37,13 +44,13 @@ resource "aws_internet_gateway" "shubham_igw" {
 }
 
 
-#Route Table
+# Route table (defines traffic rules)
 resource "aws_route_table" "shubham_route_table" {
   vpc_id = aws_vpc.shubham_vpc.id
 
   route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.shubham_igw.id
+    cidr_block = "0.0.0.0/0"   # allow all traffic
+    gateway_id = aws_internet_gateway.shubham_igw.id   # send via IGW
   }
 
   tags = {
@@ -52,23 +59,24 @@ resource "aws_route_table" "shubham_route_table" {
 }
 
 
-#subnet associated with RT
+# Attach route table to subnets
 resource "aws_route_table_association" "a" {
-  count          = 2
-  subnet_id      = aws_subnet.shubham_subnet[count.index].id
-  route_table_id = aws_route_table.shubham_route_table.id
+  count = 2
+
+  subnet_id = aws_subnet.shubham_subnet[count.index].id   # each subnet
+  route_table_id = aws_route_table.shubham_route_table.id   # same RT
 }
 
 
-#Security Group
+# Security group for EKS cluster
 resource "aws_security_group" "shubham_cluster_sg" {
   vpc_id = aws_vpc.shubham_vpc.id
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port = 0
+    to_port = 0
+    protocol = "-1"   # all protocols
+    cidr_blocks = ["0.0.0.0/0"]   # allow outbound anywhere
   }
 
   tags = {
@@ -77,21 +85,21 @@ resource "aws_security_group" "shubham_cluster_sg" {
 }
 
 
-#Node SG
+# Security group for nodes
 resource "aws_security_group" "shubham_node_sg" {
   vpc_id = aws_vpc.shubham_vpc.id
 
   ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port = 0
+    to_port = 0
+    protocol = "-1"   # allow all inbound
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port = 0
+    to_port = 0
+    protocol = "-1"   # allow all outbound
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -101,41 +109,47 @@ resource "aws_security_group" "shubham_node_sg" {
 }
 
 
-#EKS Cluster
+# EKS Cluster (control plane)
 resource "aws_eks_cluster" "shubham" {
-  name     = "shubham-cluster"
-  role_arn = aws_iam_role.shubham_cluster_role.arn
+  name = "shubham-cluster"
+
+  role_arn = aws_iam_role.shubham_cluster_role.arn   # IAM role for EKS
 
   vpc_config {
-    subnet_ids         = aws_subnet.shubham_subnet[*].id
+    subnet_ids = aws_subnet.shubham_subnet[*].id   # use both subnets
     security_group_ids = [aws_security_group.shubham_cluster_sg.id]
   }
 }
 
 
-#WorkerNode Setup
+# Node group (worker nodes)
 resource "aws_eks_node_group" "shubham" {
-  cluster_name    = aws_eks_cluster.shubham.name
+  cluster_name = aws_eks_cluster.shubham.name
+
   node_group_name = "shubham-node-group"
-  node_role_arn   = aws_iam_role.shubham_node_group_role.arn
-  subnet_ids      = aws_subnet.shubham_subnet[*].id
+
+  node_role_arn = aws_iam_role.shubham_node_group_role.arn   # node IAM role
+
+  subnet_ids = aws_subnet.shubham_subnet[*].id   # launch nodes in subnets
 
   scaling_config {
-    desired_size = 3
-    max_size     = 3
-    min_size     = 3
+    desired_size = 3   # number of nodes
+    max_size = 3
+    min_size = 3
   }
 
-  instance_types = ["c7i-flex.large"]
+  instance_types = ["c7i-flex.large"]   # EC2 type
 
   remote_access {
-    ec2_ssh_key = var.ssh_key_name
+    ec2_ssh_key = var.ssh_key_name   # SSH key
+
     source_security_group_ids = [aws_security_group.shubham_node_sg.id]
+    # allow SSH via this SG
   }
 }
 
 
-#Iam ROLE
+# IAM role for EKS cluster
 resource "aws_iam_role" "shubham_cluster_role" {
   name = "shubham-cluster-role"
 
@@ -155,14 +169,16 @@ resource "aws_iam_role" "shubham_cluster_role" {
 EOF
 }
 
-#IAMROLE assign to Cluster
+
+# Attach policy to cluster role
 resource "aws_iam_role_policy_attachment" "shubham_cluster_role_policy" {
-  role       = aws_iam_role.shubham_cluster_role.name
+  role = aws_iam_role.shubham_cluster_role.name
+
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
 
-#IamRole assign to Nodes
+# IAM role for worker nodes
 resource "aws_iam_role" "shubham_node_group_role" {
   name = "shubham-node-group-role"
 
@@ -183,19 +199,21 @@ EOF
 }
 
 
-#attaching Policy to all NODES
-
+# Attach worker node policies
 resource "aws_iam_role_policy_attachment" "shubham_node_group_role_policy" {
-  role       = aws_iam_role.shubham_node_group_role.name
+  role = aws_iam_role.shubham_node_group_role.name
+
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
 }
 
 resource "aws_iam_role_policy_attachment" "shubham_node_group_cni_policy" {
-  role       = aws_iam_role.shubham_node_group_role.name
+  role = aws_iam_role.shubham_node_group_role.name
+
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
 resource "aws_iam_role_policy_attachment" "shubham_node_group_registry_policy" {
-  role       = aws_iam_role.shubham_node_group_role.name
+  role = aws_iam_role.shubham_node_group_role.name
+
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
